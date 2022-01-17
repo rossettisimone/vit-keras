@@ -44,7 +44,7 @@ BASE_URL = "https://github.com/faustomorales/vit-keras/releases/download/dl"
 WEIGHTS = {"imagenet21k": 21_843, "imagenet21k+imagenet2012": 1_000}
 SIZES = {"B_16", "B_32", "L_16", "L_32"}
 CUSTOM_SIZES = {"B_8", "S_16"}
-CUSTOM_BASE_URL = "https://storage.googleapis.com/vit_models/imagenet21k%2Bimagenet2012/"
+CUSTOM_BASE_URL = "https://storage.googleapis.com/vit_models/imagenet21k%2Bimagenet2012"
 
 
 ImageSizeArg = typing.Union[typing.Tuple[int, int], int]
