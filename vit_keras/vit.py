@@ -16,6 +16,14 @@ ConfigDict = tx.TypedDict(
     },
 )
 
+CONFIG_S: ConfigDict = {
+    "dropout": 0.1,
+    "mlp_dim": 1536,
+    "num_heads": 6,
+    "num_layers": 12,
+    "hidden_size": 384,
+}
+
 CONFIG_B: ConfigDict = {
     "dropout": 0.1,
     "mlp_dim": 3072,
@@ -35,6 +43,9 @@ CONFIG_L: ConfigDict = {
 BASE_URL = "https://github.com/faustomorales/vit-keras/releases/download/dl"
 WEIGHTS = {"imagenet21k": 21_843, "imagenet21k+imagenet2012": 1_000}
 SIZES = {"B_16", "B_32", "L_16", "L_32"}
+CUSTOM_SIZES = {"B_8", "S_16"}
+CUSTOM_BASE_URL = "https://storage.googleapis.com/vit_models/imagenet21k%2Bimagenet2012/"
+
 
 ImageSizeArg = typing.Union[typing.Tuple[int, int], int]
 
@@ -155,8 +166,8 @@ def load_pretrained(
 ):
     """Load model weights for a known configuration."""
     image_size_tuple = interpret_image_size(image_size)
-    fname = f"ViT-{size}_{weights}.npz"
-    origin = f"{BASE_URL}/{fname}"
+    fname = f"ViT-{size}_{weights}.npz" if not size in CUSTOM_SIZES else f"ViT-{size}.npz"
+    origin = f"{BASE_URL}/{fname}" if not size in CUSTOM_SIZES else f"{CUSTOM_BASE_URL}/{fname}"
     local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir="weights")
     utils.load_weights_numpy(
         model=model,
@@ -166,6 +177,85 @@ def load_pretrained(
         num_y_patches=image_size_tuple[0] // patch_size,
     )
 
+
+def vit_s16(
+    image_size: ImageSizeArg = (224, 224),
+    classes=1000,
+    activation="linear",
+    include_top=True,
+    pretrained=True,
+    pretrained_top=True,
+    weights="imagenet21k",
+):
+    """Build ViT-S8. All arguments passed to build_model."""
+    if pretrained_top:
+        classes = validate_pretrained_top(
+            include_top=include_top,
+            pretrained=pretrained,
+            classes=classes,
+            weights=weights,
+        )
+    model = build_model(
+        **CONFIG_S,
+        name="vit-s16",
+        patch_size=16,
+        image_size=image_size,
+        classes=classes,
+        activation=activation,
+        include_top=include_top,
+        representation_size=384 if weights == "imagenet21k" else None,
+    )
+
+    if pretrained:
+        load_pretrained(
+            size="S_16",
+            weights=weights,
+            model=model,
+            pretrained_top=pretrained_top,
+            image_size=image_size,
+            patch_size=16,
+        )
+    return model
+
+
+def vit_b8(
+    image_size: ImageSizeArg = (224, 224),
+    classes=1000,
+    activation="linear",
+    include_top=True,
+    pretrained=True,
+    pretrained_top=True,
+    weights="imagenet21k+imagenet2012",
+):
+    """Build ViT-B16. All arguments passed to build_model."""
+    if pretrained_top:
+        classes = validate_pretrained_top(
+            include_top=include_top,
+            pretrained=pretrained,
+            classes=classes,
+            weights=weights,
+        )
+    model = build_model(
+        **CONFIG_B,
+        name="vit-b16",
+        patch_size=8,
+        image_size=image_size,
+        classes=classes,
+        activation=activation,
+        include_top=include_top,
+        representation_size=768 if weights == "imagenet21k" else None,
+    )
+
+    if pretrained:
+        load_pretrained(
+            size="B_8",
+            weights=weights,
+            model=model,
+            pretrained_top=pretrained_top,
+            image_size=image_size,
+            patch_size=8,
+        )
+    return model
 
 def vit_b16(
     image_size: ImageSizeArg = (224, 224),
@@ -205,7 +295,6 @@ def vit_b16(
             patch_size=16,
         )
     return model
-
 
 def vit_b32(
     image_size: ImageSizeArg = (224, 224),
