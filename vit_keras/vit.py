@@ -1,3 +1,4 @@
+import os
 import typing
 import warnings
 import tensorflow as tf
@@ -44,7 +45,8 @@ BASE_URL = "https://github.com/faustomorales/vit-keras/releases/download/dl"
 WEIGHTS = {"imagenet21k": 21_843, "imagenet21k+imagenet2012": 1_000}
 SIZES = {"B_16", "B_32", "L_16", "L_32"}
 CUSTOM_SIZES = {"B_8", "S_16"}
-CUSTOM_BASE_URL = "https://storage.googleapis.com/vit_models/imagenet21k%2Bimagenet2012"
+CUSTOM_BASE_URL = {"S_16":"gs://vit_models/augreg/S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
+                   "B_8":"gs://vit_models/imagenet21k+imagenet2012/ViT-B_8.npz"}
 
 
 ImageSizeArg = typing.Union[typing.Tuple[int, int], int]
@@ -166,9 +168,16 @@ def load_pretrained(
 ):
     """Load model weights for a known configuration."""
     image_size_tuple = interpret_image_size(image_size)
-    fname = f"ViT-{size}_{weights}.npz" if not size in CUSTOM_SIZES else f"ViT-{size}.npz"
-    origin = f"{BASE_URL}/{fname}" if not size in CUSTOM_SIZES else f"{CUSTOM_BASE_URL}/{fname}"
-    local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir="weights")
+    fname = f"ViT-{size}_{weights}.npz" 
+    if not size in CUSTOM_SIZES:
+        origin = f"{BASE_URL}/{fname}"
+        local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir="weights")
+    else:
+        origin = f"{CUSTOM_BASE_URL[size]}"
+        local_filepath = f"{os.path.expanduser('~')}/.keras/weights/{fname}"
+        if not tf.io.gfile.exists(local_filepath):
+            tf.io.gfile.copy(origin,local_filepath)
+        
     utils.load_weights_numpy(
         model=model,
         params_path=local_filepath,
@@ -185,7 +194,7 @@ def vit_s16(
     include_top=True,
     pretrained=True,
     pretrained_top=True,
-    weights="imagenet21k",
+    weights="imagenet21k+imagenet2012",
 ):
     """Build ViT-S8. All arguments passed to build_model."""
     if pretrained_top:
@@ -237,7 +246,7 @@ def vit_b8(
         )
     model = build_model(
         **CONFIG_B,
-        name="vit-b16",
+        name="vit-b8",
         patch_size=8,
         image_size=image_size,
         classes=classes,
