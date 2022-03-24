@@ -169,15 +169,17 @@ def load_pretrained(
     """Load model weights for a known configuration."""
     image_size_tuple = interpret_image_size(image_size)
     fname = f"ViT-{size}_{weights}.npz" 
+    HOME_PATH=os.path.dirname(sys.modules['__main__'].__file__)
+    WEIGHTS_PATH=os.path.join(HOME_PATH,"keras_weights")
     if not size in CUSTOM_SIZES:
         origin = f"{BASE_URL}/{fname}"
-        local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir="weights")
+        local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir=WEIGHTS_PATH)
     else:
         origin = f"{CUSTOM_BASE_URL[size]}"
-        local_filepath = f"{os.path.expanduser('~')}/.keras/weights/{fname}"
+        local_filepath = f"{WEIGHTS_PATH}/{fname}"
         if not tf.io.gfile.exists(local_filepath):
             tf.io.gfile.copy(origin,local_filepath)
-        
+       
     utils.load_weights_numpy(
         model=model,
         params_path=local_filepath,
