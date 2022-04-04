@@ -1,5 +1,4 @@
 import os
-import sys
 import typing
 import warnings
 import tensorflow as tf
@@ -170,7 +169,7 @@ def load_pretrained(
     """Load model weights for a known configuration."""
     image_size_tuple = interpret_image_size(image_size)
     fname = f"ViT-{size}_{weights}.npz" 
-    HOME_PATH=os.path.dirname(sys.modules['__main__'].__file__)
+    HOME_PATH=os.getcwd()
     WEIGHTS_PATH=os.path.join(HOME_PATH,"keras_weights")
     if not size in CUSTOM_SIZES:
         origin = f"{BASE_URL}/{fname}"
