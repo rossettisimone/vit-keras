@@ -1,7 +1,9 @@
 # pylint: disable=arguments-differ,missing-function-docstring,missing-class-docstring,unexpected-keyword-arg,no-value-for-parameter
 import tensorflow as tf
 import tensorflow_addons as tfa
+import typing
 
+ImageSizeArg = typing.Union[typing.Tuple[int, int], int]
 
 @tf.keras.utils.register_keras_serializable()
 class ClassToken(tf.keras.layers.Layer):
@@ -32,10 +34,12 @@ class ClassToken(tf.keras.layers.Layer):
     def from_config(cls, config):
         return cls(**config)
 
-
 @tf.keras.utils.register_keras_serializable()
 class AddPositionEmbs(tf.keras.layers.Layer):
     """Adds (optionally learned) positional embeddings to the inputs."""
+    def __init__(self, image_size: ImageSizeArg, patch_size: int, hidden_size: int, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.shape=(1, 1 + image_size[0]//patch_size*image_size[1]//patch_size, hidden_size)
 
     def build(self, input_shape):
         assert (
@@ -44,14 +48,34 @@ class AddPositionEmbs(tf.keras.layers.Layer):
         self.pe = tf.Variable(
             name="pos_embedding",
             initial_value=tf.random_normal_initializer(stddev=0.06)(
-                shape=(1, input_shape[1], input_shape[2])
+                shape=self.shape
             ),
             dtype="float32",
             trainable=True,
         )
 
     def call(self, inputs):
-        return inputs + tf.cast(self.pe, dtype=inputs.dtype)
+        return inputs + tf.cast(self.interpolate_pos_encoding(inputs), dtype=inputs.dtype)
+
+    def interpolate_pos_encoding(self, x):
+        M = tf.shape(x)[1] - 1
+        N = tf.shape(self.pe)[1] - 1
+
+        def interpolate():
+            class_pos_embed = self.pe[:, :1]
+            patch_pos_embed = self.pe[:, 1:]
+            dim = tf.shape(x)[-1]
+            MM = tf.cast(tf.math.sqrt(tf.cast(M,tf.float32)),tf.int32)
+            NN = tf.cast(tf.math.sqrt(tf.cast(N,tf.float32)),tf.int32)
+            patch_pos_embed = tf.image.resize(
+                tf.reshape(patch_pos_embed,(1, NN, NN, dim)),
+                (MM, MM),
+                method=tf.image.ResizeMethod.BICUBIC,
+            )
+            patch_pos_embed = tf.reshape(patch_pos_embed, (1, -1, dim))
+            return tf.concat((class_pos_embed, patch_pos_embed), axis=1)
+
+        return tf.cond(tf.equal(M,N),lambda: self.pe, interpolate)
 
     def get_config(self):
         config = super().get_config()
@@ -60,7 +84,6 @@ class AddPositionEmbs(tf.keras.layers.Layer):
     @classmethod
     def from_config(cls, config):
         return cls(**config)
-
 
 @tf.keras.utils.register_keras_serializable()
 class MultiHeadSelfAttention(tf.keras.layers.Layer):
