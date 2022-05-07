@@ -108,10 +108,7 @@ def build_model(
             classification layer. If None, no Dense layer is inserted.
     """
     image_size_tuple = interpret_image_size(image_size)
-    assert (image_size_tuple[0] % patch_size == 0) and (
-        image_size_tuple[1] % patch_size == 0
-    ), "image_size must be a multiple of patch_size"
-    x = tf.keras.layers.Input(shape=(image_size_tuple[0], image_size_tuple[1], 3))
+    x = tf.keras.layers.Input(shape=(None, None, 3))
     y = tf.keras.layers.Conv2D(
         filters=hidden_size,
         kernel_size=patch_size,
@@ -119,9 +116,15 @@ def build_model(
         padding="valid",
         name="embedding",
     )(x)
-    y = tf.keras.layers.Reshape((y.shape[1] * y.shape[2], hidden_size))(y)
+    y = tf.keras.layers.Reshape((-1, hidden_size))(y)
     y = layers.ClassToken(name="class_token")(y)
-    y = layers.AddPositionEmbs(name="Transformer/posembed_input")(y)
+    y = layers.AddPositionEmbs(
+        image_size=image_size_tuple,
+        patch_size=patch_size,
+        hidden_size=hidden_size,
+        name="Transformer/posembed_input"
+    )(y)
+
     for n in range(num_layers):
         y, _ = layers.TransformerBlock(
             num_heads=num_heads,
