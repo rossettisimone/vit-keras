@@ -144,7 +144,6 @@ def build_model(
         y = tf.keras.layers.Dense(classes, name="head", activation=activation)(y)
     return tf.keras.models.Model(inputs=x, outputs=y, name=name)
 
-
 def validate_pretrained_top(
     include_top: bool, pretrained: bool, classes: int, weights: str
 ):
@@ -174,14 +173,17 @@ def load_pretrained(
     fname = f"ViT-{size}_{weights}.npz" 
     HOME_PATH=os.getcwd()
     WEIGHTS_PATH=os.path.join(HOME_PATH,"keras_weights")
-    if not size in CUSTOM_SIZES:
+    if size in SIZES:
         origin = f"{BASE_URL}/{fname}"
         local_filepath = tf.keras.utils.get_file(fname, origin, cache_subdir=WEIGHTS_PATH)
-    else:
+    elif size in CUSTOM_SIZES:
         origin = f"{CUSTOM_BASE_URL[size]}"
         local_filepath = f"{WEIGHTS_PATH}/{fname}"
         if not tf.io.gfile.exists(local_filepath):
             tf.io.gfile.copy(origin,local_filepath)
+    else:
+        print('Pre-trained model does not exists!!')
+        return
        
     utils.load_weights_numpy(
         model=model,
@@ -425,3 +427,80 @@ def vit_l32(
             image_size=image_size,
         )
     return model
+
+CONFIG_B_D: ConfigDict = {
+    "dropout": 0.1,
+    "mlp_dim": 3072,
+    "num_heads": 12,
+    "num_layers": 2,
+    "hidden_size": 768,
+}
+
+def vit_b16_decoder_with_skip_connections(
+    image_size: ImageSizeArg = (224, 224),
+):
+    """Build ViT-B16. All arguments passed to build_model."""
+
+    model = build_decoder_with_skip_connections(
+        **CONFIG_B_D,
+        name="vit-b16-d",
+        patch_size=16,
+        image_size=image_size,
+    )
+    return model
+
+
+def build_decoder_with_skip_connections(
+    image_size: ImageSizeArg,
+    patch_size: int,
+    num_layers: int,
+    hidden_size: int,
+    num_heads: int,
+    name: str,
+    mlp_dim: int,
+    dropout=0.1,
+):
+    """Build a ViT decoder model with skipconnections inputs.
+
+    Args:
+        image_size: The size of input images.
+        patch_size: The size of each patch (must fit evenly in image_size)
+        classes: optional number of classes to classify images
+            into, only to be specified if `include_top` is True, and
+            if no `weights` argument is specified.
+        num_layers: The number of transformer layers to use.
+        hidden_size: The number of filters to use
+        num_heads: The number of transformer heads
+        mlp_dim: The number of dimensions for the MLP output in the transformers.
+        dropout_rate: fraction of the units to drop for dense layers.
+        activation: The activation to use for the final layer.
+        include_top: Whether to include the final classification layer. If not,
+            the output will have dimensions (batch_size, hidden_size).
+        representation_size: The size of the representation prior to the
+            classification layer. If None, no Dense layer is inserted.
+    """
+    inputs = []
+    image_size_tuple = interpret_image_size(image_size)
+    y = tf.keras.layers.Input(shape=(None, hidden_size), name="Transformer/decoder_input")
+    inputs.append(y)
+    y = layers.AddPositionEmbs(
+        image_size=image_size_tuple,
+        patch_size=patch_size,
+        hidden_size=hidden_size,
+        name="Transformer/decoder_posembed_input"
+    )(y)
+
+    for n in range(num_layers):
+        s = tf.keras.layers.Input(shape=(None, hidden_size),name=f"Transformer/skip_connection_{n}")
+        inputs.append(s)
+        y, _ = layers.TransformerBlock(
+            num_heads=num_heads,
+            mlp_dim=mlp_dim,
+            dropout=dropout,
+            name=f"Transformer/decoderblock_{n}",
+        )([y,s,s]) # perform crossattention
+    y = tf.keras.layers.LayerNormalization(
+        epsilon=1e-6, name="Transformer/decoder_norm"
+    )(y)
+
+    return tf.keras.models.Model(inputs=inputs, outputs=y, name=name)
