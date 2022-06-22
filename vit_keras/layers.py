@@ -92,17 +92,34 @@ class MultiHeadSelfAttention(tf.keras.layers.Layer):
         self.num_heads = num_heads
 
     def build(self, input_shape):
-        hidden_size = input_shape[-1]
+        if isinstance(input_shape,list):
+            if all(isinstance(x,tf.TensorShape) for x in input_shape):
+                if len(input_shape) == 1:
+                    query_hidden_size = key_hidden_size = value_hidden_size = input_shape[0][-1]
+                elif len(input_shape) == 2:
+                    query_hidden_size, key_hidden_size, value_hidden_size = input_shape[0][-1], input_shape[1][-1], input_shape[1][-1]
+                elif len(input_shape) == 3:
+                    query_hidden_size, key_hidden_size, value_hidden_size = input_shape[0][-1], input_shape[1][-1], input_shape[2][-1]
+                else:
+                    raise ValueError(f"[ERR]: inputs list {input_shape} must be no more than 3 elements")
+            else:
+                raise ValueError(f"[ERR]: input must be tf.TensorShape or a list of tf.TensorShape, not {input_shape}")
+        elif isinstance(input_shape,tf.TensorShape):
+            query_hidden_size = key_hidden_size = value_hidden_size = input_shape[-1]
+        else:
+            raise ValueError(f"[ERR]: input_shape {input_shape} does not match supported types.")
+
         num_heads = self.num_heads
+        hidden_size = query_hidden_size
         if hidden_size % num_heads != 0:
             raise ValueError(
                 f"embedding dimension = {hidden_size} should be divisible by number of heads = {num_heads}"
             )
         self.hidden_size = hidden_size
         self.projection_dim = hidden_size // num_heads
-        self.query_dense = tf.keras.layers.Dense(hidden_size, name="query")
-        self.key_dense = tf.keras.layers.Dense(hidden_size, name="key")
-        self.value_dense = tf.keras.layers.Dense(hidden_size, name="value")
+        self.query_dense = tf.keras.layers.Dense(query_hidden_size, name="query")
+        self.key_dense = tf.keras.layers.Dense(key_hidden_size, name="key")
+        self.value_dense = tf.keras.layers.Dense(value_hidden_size, name="value")
         self.combine_heads = tf.keras.layers.Dense(hidden_size, name="out")
 
     # pylint: disable=no-self-use
@@ -118,11 +135,16 @@ class MultiHeadSelfAttention(tf.keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.projection_dim))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
-    def call(self, inputs):
-        batch_size = tf.shape(inputs)[0]
-        query = self.query_dense(inputs)
-        key = self.key_dense(inputs)
-        value = self.value_dense(inputs)
+    def call(self, query, value=None, key=None):
+        if value is None:
+            value = query
+        if key is None:
+            key = value
+
+        batch_size = tf.shape(query)[0]
+        query = self.query_dense(query)
+        key = self.key_dense(key)
+        value = self.value_dense(value)
         query = self.separate_heads(query, batch_size)
         key = self.separate_heads(key, batch_size)
         value = self.separate_heads(value, batch_size)
@@ -155,6 +177,17 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.dropout = dropout
 
     def build(self, input_shape):
+        
+        if isinstance(input_shape,list):
+            if all(isinstance(x,tf.TensorShape) for x in input_shape):
+                hidden_size = input_shape[0][-1]
+            else:
+                raise ValueError(f"[ERR]: input_shape list {input_shape} does not match supported type tf.TensorShape.")
+        elif isinstance(input_shape, tf.TensorShape):
+            hidden_size = input_shape[-1]
+        else:
+            raise ValueError(f"[ERR]: input_shape {input_shape} does not match supported types.")
+
         self.att = MultiHeadSelfAttention(
             num_heads=self.num_heads,
             name="MultiHeadDotProductAttention_1",
@@ -174,7 +207,7 @@ class TransformerBlock(tf.keras.layers.Layer):
                     lambda x: tfa.activations.gelu(x, approximate=False)
                 ),
                 tf.keras.layers.Dropout(self.dropout),
-                tf.keras.layers.Dense(input_shape[-1], name=f"{self.name}/Dense_1"),
+                tf.keras.layers.Dense(hidden_size, name=f"{self.name}/Dense_1"),
                 tf.keras.layers.Dropout(self.dropout),
             ],
             name="MlpBlock_3",
@@ -188,10 +221,16 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.dropout_layer = tf.keras.layers.Dropout(self.dropout)
 
     def call(self, inputs, training):
-        x = self.layernorm1(inputs)
-        x, weights = self.att(x)
+        if isinstance(inputs,list):
+            query, *rest = inputs
+        else:
+            query = inputs
+        x = [self.layernorm1(query)]
+        if isinstance(inputs,list):
+            x += rest
+        x, weights = self.att(*x)
         x = self.dropout_layer(x, training=training)
-        x = x + inputs
+        x = x + query
         y = self.layernorm2(x)
         y = self.mlpblock(y)
         return x + y, weights
