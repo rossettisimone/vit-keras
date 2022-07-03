@@ -37,9 +37,10 @@ class ClassToken(tf.keras.layers.Layer):
 @tf.keras.utils.register_keras_serializable()
 class AddPositionEmbs(tf.keras.layers.Layer):
     """Adds (optionally learned) positional embeddings to the inputs."""
-    def __init__(self, image_size: ImageSizeArg, patch_size: int, hidden_size: int, *args, **kwargs) -> None:
+    def __init__(self, image_size: ImageSizeArg, patch_size: int, hidden_size: int, num_extra_tokens: int = 1, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.shape=(1, 1 + image_size[0]//patch_size*image_size[1]//patch_size, hidden_size)
+        self.num_extra_tokens = num_extra_tokens
+        self.shape=(1, self.num_extra_tokens + image_size[0]//patch_size*image_size[1]//patch_size, hidden_size)
 
     def build(self, input_shape):
         assert (
@@ -58,12 +59,12 @@ class AddPositionEmbs(tf.keras.layers.Layer):
         return inputs + tf.cast(self.interpolate_pos_encoding(inputs), dtype=inputs.dtype)
 
     def interpolate_pos_encoding(self, x):
-        M = tf.shape(x)[1] - 1
-        N = tf.shape(self.pe)[1] - 1
+        M = tf.shape(x)[1] - self.num_extra_tokens
+        N = tf.shape(self.pe)[1] - self.num_extra_tokens
 
         def interpolate():
-            class_pos_embed = self.pe[:, :1]
-            patch_pos_embed = self.pe[:, 1:]
+            class_pos_embed = self.pe[:, :self.num_extra_tokens]
+            patch_pos_embed = self.pe[:, self.num_extra_tokens:]
             dim = tf.shape(x)[-1]
             MM = tf.cast(tf.math.sqrt(tf.cast(M,tf.float32)),tf.int32)
             NN = tf.cast(tf.math.sqrt(tf.cast(N,tf.float32)),tf.int32)
