@@ -487,6 +487,7 @@ def build_decoder_with_skip_connections(
         image_size=image_size_tuple,
         patch_size=patch_size,
         hidden_size=hidden_size,
+        num_extra_tokens=0,
         name="Transformer/decoder_posembed_input"
     )(y)
 
